@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goal Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            backdrop-filter: blur(10px);
+        }
+
+        .dashboard-container {
+            max-width: 1000px;
+            width: 95%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        h2 {
+            color: #444;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .btn-success {
+            background: #28a745;
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .toggle-link {
+            text-align: center;
+            margin-top: 20px;
+            color: #667eea;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .toggle-link:hover {
+            color: #764ba2;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e1e5e9;
+        }
+
+        .user-info {
+            color: #666;
+        }
+
+        .goal-form {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .goal-item {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            transition: transform 0.2s ease;
+        }
+
+        .goal-item:hover {
+            transform: translateY(-2px);
+        }
+
+        .goal-item.completed {
+            border-left-color: #28a745;
+            opacity: 0.8;
+        }
+
+        .goal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .goal-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .goal-date {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .goal-description {
+            color: #555;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .goal-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e1e5e9;
+            border-radius: 4px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 500;
+            color: white;
+        }
+
+        .status-active {
+            background: #17a2b8;
+        }
+
+        .status-completed {
+            background: #28a745;
+        }
+
+        .no-goals {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+            font-style: italic;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error {
+            color: #dc3545;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 20px;
+            }
+            
+            .dashboard-container {
+                width: 100%;
+                padding: 20px;
+            }
+            
+            .goal-actions {
+                flex-direction: column;
+            }
+            
+            .btn-danger, .btn-success {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Auth Container -->
+    <div id="auth-container" class="container">
+        <h1>Goal Tracker</h1>
+        
+        <!-- Login Form -->
+        <div id="login-form">
+            <h2>Welcome Back!</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit" class="btn">Sign In</button>
+            </form>
+            <div class="toggle-link" onclick="toggleForms()">
+                Don't have an account? Sign up
+            </div>
+        </div>
+
+        <!-- Sign Up Form -->
+        <div id="signup-form" class="hidden">
+            <h2>Create Account</h2>
+            <form id="signupForm">
+                <div class="form-group">
+                    <label for="signupName">Full Name</label>
+                    <input type="text" id="signupName" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupEmail">Email</label>
+                    <input type="email" id="signupEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Password</label>
+                    <input type="password" id="signupPassword" required>
+                </div>
+                <button type="submit" class="btn">Create Account</button>
+            </form>
+            <div class="toggle-link" onclick="toggleForms()">
+                Already have an account? Sign in
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Container -->
+    <div id="dashboard-container" class="container dashboard-container hidden">
+        <div class="header">
+            <div>
+                <h1>My Goals</h1>
+                <div class="user-info">Welcome, <span id="userName"></span>!</div>
+            </div>
+            <button class="btn btn-secondary" onclick="signOut()" style="width: auto; padding: 10px 20px;">Sign Out</button>
+        </div>
+
+        <!-- Add Goal Form -->
+        <div class="goal-form">
+            <h2>Add New Goal</h2>
+            <form id="goalForm">
+                <div class="form-group">
+                    <label for="goalTitle">Goal Title</label>
+                    <input type="text" id="goalTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="goalDescription">Description</label>
+                    <textarea id="goalDescription" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="goalDate">Target Date</label>
+                    <input type="date" id="goalDate" required>
+                </div>
+                <button type="submit" class="btn">Add Goal</button>
+            </form>
+        </div>
+
+        <!-- Goals List -->
+        <div id="goals-list">
+            <div class="no-goals" id="no-goals">
+                No goals yet. Add your first goal above!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase Configuration - REPLACE WITH YOUR CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyDPzgy2QJsFof50s3AWgPpP67eGIPgUETc",
+            authDomain: "goaltrackerapp-ebe8f.firebaseapp.com",
+            projectId: "goaltrackerapp-ebe8f", 
+            storageBucket: "goaltrackerapp-ebe8f.firebasestorage.app", 
+            messagingSenderId: "766757052897", 
+            appId: "1:766757052897:web:1a24d11c8c7470ed34b2a0", 
+            measurementId: "G-S9SFS53KWS" 
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // Global variables
+        let currentUser = null;
+        let goals = [];
+
+        // DOM Elements
+        const authContainer = document.getElementById('auth-container');
+        const dashboardContainer = document.getElementById('dashboard-container');
+        const loginForm = document.getElementById('login-form');
+        const signupForm = document.getElementById('signup-form');
+        const userName = document.getElementById('userName');
+        const goalsList = document.getElementById('goals-list');
+        const noGoalsMessage = document.getElementById('no-goals');
+
+        // Auth State Observer
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                showDashboard();
+                loadUserProfile();
+                loadGoals();
+            } else {
+                currentUser = null;
+                showAuth();
+            }
+        });
+
+        // Toggle between login and signup forms
+        function toggleForms() {
+            loginForm.classList.toggle('hidden');
+            signupForm.classList.toggle('hidden');
+        }
+
+        // Show auth container
+        function showAuth() {
+            authContainer.classList.remove('hidden');
+            dashboardContainer.classList.add('hidden');
+        }
+
+        // Show dashboard
+        function showDashboard() {
+            authContainer.classList.add('hidden');
+            dashboardContainer.classList.remove('hidden');
+        }
+
+        // Sign Up
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('signupName').value;
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                // Save user profile to Firestore
+                await db.collection('users').doc(user.uid).set({
+                    name: name,
+                    email: email,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                console.log('Account created successfully');
+            } catch (error) {
+                console.error('Sign up error:', error);
+                alert('Error creating account: ' + error.message);
+            }
+        });
+
+        // Sign In
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                console.log('Signed in successfully');
+            } catch (error) {
+                console.error('Sign in error:', error);
+                alert('Error signing in: ' + error.message);
+            }
+        });
+
+        // Sign Out
+        async function signOut() {
+            try {
+                await auth.signOut();
+                console.log('Signed out successfully');
+            } catch (error) {
+                console.error('Sign out error:', error);
+                alert('Error signing out: ' + error.message);
+            }
+        }
+
+        // Load user profile
+        async function loadUserProfile() {
+            try {
+                const doc = await db.collection('users').doc(currentUser.uid).get();
+                if (doc.exists) {
+                    const userData = doc.data();
+                    userName.textContent = userData.name;
+                }
+            } catch (error) {
+                console.error('Error loading profile:', error);
+            }
+        }
+
+        // Add new goal
+        document.getElementById('goalForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const title = document.getElementById('goalTitle').value;
+            const description = document.getElementById('goalDescription').value;
+            const targetDate = document.getElementById('goalDate').value;
+
+            try {
+                const docRef = await db.collection('goals').add({
+                    userId: currentUser.uid,
+                    title: title,
+                    description: description,
+                    targetDate: targetDate,
+                    progress: 0,
+                    status: 'active',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                // Reset form
+                document.getElementById('goalForm').reset();
+                console.log('Goal added successfully with ID:', docRef.id);
+                
+                // Wait a bit for the serverTimestamp to be set, then reload goals
+                setTimeout(() => {
+                    loadGoals();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error adding goal:', error);
+                alert('Error adding goal: ' + error.message);
+            }
+        });
+
+        // Load goals
+        async function loadGoals() {
+            try {
+                // Try with orderBy first, fallback without if it fails
+                let snapshot;
+                try {
+                    snapshot = await db.collection('goals')
+                        .where('userId', '==', currentUser.uid)
+                        .orderBy('createdAt', 'desc')
+                        .get();
+                } catch (orderError) {
+                    console.log('OrderBy failed, trying without orderBy:', orderError);
+                    // If orderBy fails (likely due to missing index), get without ordering
+                    snapshot = await db.collection('goals')
+                        .where('userId', '==', currentUser.uid)
+                        .get();
+                }
+
+                goals = [];
+                snapshot.forEach(doc => {
+                    const goalData = doc.data();
+                    goals.push({
+                        id: doc.id,
+                        ...goalData
+                    });
+                });
+
+                // Sort goals in JavaScript if orderBy failed
+                goals.sort((a, b) => {
+                    const aTime = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate() : new Date(0);
+                    const bTime = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate() : new Date(0);
+                    return bTime - aTime; // Newest first
+                });
+
+                renderGoals();
+            } catch (error) {
+                console.error('Error loading goals:', error);
+                alert('Error loading goals: ' + error.message);
+            }
+        }
+
+        // Render goals
+        function renderGoals() {
+            if (goals.length === 0) {
+                noGoalsMessage.classList.remove('hidden');
+                goalsList.innerHTML = '<div class="no-goals">No goals yet. Add your first goal above!</div>';
+                return;
+            }
+
+            noGoalsMessage.classList.add('hidden');
+            
+            const goalsHTML = goals.map(goal => {
+                const targetDate = new Date(goal.targetDate).toLocaleDateString();
+                const isCompleted = goal.status === 'completed';
+                
+                return `
+                    <div class="goal-item ${isCompleted ? 'completed' : ''}">
+                        <div class="goal-header">
+                            <div>
+                                <div class="goal-title">${goal.title}</div>
+                                <div class="goal-date">Target: ${targetDate}</div>
+                            </div>
+                            <span class="status-badge ${isCompleted ? 'status-completed' : 'status-active'}">
+                                ${isCompleted ? 'Completed' : 'Active'}
+                            </span>
+                        </div>
+                        <div class="goal-description">${goal.description}</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${goal.progress}%"></div>
+                        </div>
+                        <div>Progress: ${goal.progress}%</div>
+                        <div class="goal-actions">
+                            ${!isCompleted ? `
+                                <button class="btn btn-success" onclick="updateProgress('${goal.id}', ${Math.min(goal.progress + 25, 100)})">
+                                    +25% Progress
+                                </button>
+                                <button class="btn btn-success" onclick="markCompleted('${goal.id}')">
+                                    Mark Complete
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-danger" onclick="deleteGoal('${goal.id}')">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            goalsList.innerHTML = goalsHTML;
+        }
+
+        // Update goal progress
+        async function updateProgress(goalId, newProgress) {
+            try {
+                await db.collection('goals').doc(goalId).update({
+                    progress: newProgress,
+                    status: newProgress >= 100 ? 'completed' : 'active'
+                });
+                
+                loadGoals();
+            } catch (error) {
+                console.error('Error updating progress:', error);
+                alert('Error updating progress: ' + error.message);
+            }
+        }
+
+        // Mark goal as completed
+        async function markCompleted(goalId) {
+            try {
+                await db.collection('goals').doc(goalId).update({
+                    progress: 100,
+                    status: 'completed'
+                });
+                
+                loadGoals();
+            } catch (error) {
+                console.error('Error marking as completed:', error);
+                alert('Error marking as completed: ' + error.message);
+            }
+        }
+
+        // Delete goal
+        async function deleteGoal(goalId) {
+            if (confirm('Are you sure you want to delete this goal?')) {
+                try {
+                    await db.collection('goals').doc(goalId).delete();
+                    loadGoals();
+                } catch (error) {
+                    console.error('Error deleting goal:', error);
+                    alert('Error deleting goal: ' + error.message);
+                }
+            }
+        }
+
+        // Set minimum date to today
+        document.getElementById('goalDate').min = new Date().toISOString().split('T')[0];
+    </script>
+</body>
+</html>
