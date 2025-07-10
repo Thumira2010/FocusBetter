@@ -331,7 +331,14 @@
         <div class="header">
             <div>
                 <h1>My Goals</h1>
-                <div class="user-info">Welcome, <span id="userName"></span>!</div>
+                
+                <div class="user-info">
+                    Welcome, <span id="userName"></span>!
+                    <br>
+                    Plan: <span id="userPlan"></span>
+                    <button class="btn btn-success" onclick="upgradePlan()">Upgrade to Premium</button>
+                </div>
+
             </div>
             <button class="btn btn-secondary" onclick="signOut()" style="width: auto; padding: 10px 20px;">Sign Out</button>
         </div>
@@ -362,6 +369,36 @@
                 No goals yet. Add your first goal above!
             </div>
         </div>
+
+        <!-- Challenges Section -->
+        <div class="challenges-section">
+            <h2>Available Challenges</h2>
+            <div id="challenges-list">
+                <div>Loading challenges...</div>
+            </div>
+        </div>
+        <!-- Add Challenge Section (Only Premium) -->
+<div id="add-challenge-form" class="goal-form hidden">
+    <h2>Add New Challenge</h2>
+    <form id="challengeForm">
+        <div class="form-group">
+            <label for="challengeTitle">Challenge Title</label>
+            <input type="text" id="challengeTitle" required>
+        </div>
+        <div class="form-group">
+            <label for="challengeDescription">Description</label>
+            <textarea id="challengeDescription" required></textarea>
+        </div>
+        <button type="submit" class="btn">Add Challenge</button>
+    </form>
+</div>
+
+        <div class="goal-form">
+            <h2>My Challenges</h2>
+            <div id="myChallengesList">
+                <div class="no-goals">You haven’t joined any challenges yet.</div>
+            </div>
+        </div>        
     </div>
 
     <script>
@@ -384,6 +421,8 @@
         // Global variables
         let currentUser = null;
         let goals = [];
+        let userPlan = 'free';
+
 
         // DOM Elements
         const authContainer = document.getElementById('auth-container');
@@ -401,6 +440,9 @@
                 showDashboard();
                 loadUserProfile();
                 loadGoals();
+                loadMyChallenges();
+                loadChallenges();
+                loadJoinedChallenges();
             } else {
                 currentUser = null;
                 showAuth();
@@ -441,6 +483,7 @@
                 await db.collection('users').doc(user.uid).set({
                     name: name,
                     email: email,
+                    plan: "free",
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
 
@@ -454,7 +497,7 @@
         // Sign In
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+  
             const email = document.getElementById('loginEmail').value;
             const password = document.getElementById('loginPassword').value;
 
@@ -466,6 +509,7 @@
                 alert('Error signing in: ' + error.message);
             }
         });
+
 
         // Sign Out
         async function signOut() {
@@ -479,51 +523,121 @@
         }
 
         // Load user profile
-        async function loadUserProfile() {
-            try {
-                const doc = await db.collection('users').doc(currentUser.uid).get();
-                if (doc.exists) {
-                    const userData = doc.data();
-                    userName.textContent = userData.name;
-                }
-            } catch (error) {
-                console.error('Error loading profile:', error);
+async function loadUserProfile() {
+  try {
+    const doc = await db.collection('users').doc(currentUser.uid).get();
+    if (doc.exists) {
+      const userData = doc.data();
+      userName.textContent = userData.name;
+      
+      // Store plan globally
+      userPlan = userData.plan || 'free';
+      document.getElementById('userPlan').textContent = userPlan;
+
+      // Show Add Challenge form if premium
+      const addChallengeForm = document.getElementById('add-challenge-form');
+      if (userPlan === 'premium') {
+        addChallengeForm.classList.remove('hidden');
+      } else {
+        addChallengeForm.classList.add('hidden');
+      }
+    }
+  } catch (error) {
+    console.error('Error loading profile:', error);
+  }
+}
+
+
+        async function loadMyChallenges() {
+          const myChallengesList = document.getElementById('myChallengesList');
+          myChallengesList.innerHTML = '<div class="no-goals">Loading...</div>';
+        
+          try {
+            const userDoc = await db.collection('users').doc(currentUser.uid).get();
+            const userData = userDoc.data();
+            const joined = userData.joinedChallenges || [];
+        
+            if (joined.length === 0) {
+              myChallengesList.innerHTML = '<div class="no-goals">You haven’t joined any challenges yet.</div>';
+              return;
             }
+        
+            // Get challenge details
+            const snapshot = await db.collection('challenges').get();
+            const allChallenges = [];
+            snapshot.forEach(doc => {
+              allChallenges.push({ id: doc.id, ...doc.data() });
+            });
+        
+            const joinedChallenges = allChallenges.filter(ch => joined.includes(ch.id));
+        
+            const challengesHTML = joinedChallenges.map(ch => `
+              <div class="goal-item">
+                <div class="goal-header">
+                  <div>
+                    <div class="goal-title">${ch.title}</div>
+                    <div class="goal-date">${new Date(ch.createdAt?.toDate?.() || Date.now()).toLocaleDateString()}</div>
+                  </div>
+                  <span class="status-badge status-active">In Progress</span>
+                </div>
+                <div class="goal-description">${ch.description}</div>
+              </div>
+            `).join('');
+          
+            myChallengesList.innerHTML = challengesHTML;
+          
+          } catch (error) {
+            console.error('Error loading my challenges:', error);
+            myChallengesList.innerHTML = '<div class="no-goals">Could not load challenges.</div>';
+          }
         }
+        
+        
 
         // Add new goal
         document.getElementById('goalForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const title = document.getElementById('goalTitle').value;
             const description = document.getElementById('goalDescription').value;
             const targetDate = document.getElementById('goalDate').value;
 
             try {
+                // ✅ Count active goals
+                const activeGoals = goals.filter(g => g.status === 'active').length;
+
+                // ✅ Enforce limit for free plan
+                if (userPlan === 'free' && activeGoals >= 10) {
+                  alert('Free plan limit reached! Upgrade to Premium for unlimited goals.');
+                  return; // block adding
+                }
+
                 const docRef = await db.collection('goals').add({
-                    userId: currentUser.uid,
-                    title: title,
-                    description: description,
-                    targetDate: targetDate,
-                    progress: 0,
-                    status: 'active',
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                  userId: currentUser.uid,
+                  title: title,
+                  description: description,
+                  targetDate: targetDate,
+                  progress: 0,
+                  status: 'active',
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
 
                 // Reset form
                 document.getElementById('goalForm').reset();
                 console.log('Goal added successfully with ID:', docRef.id);
-                
-                // Wait a bit for the serverTimestamp to be set, then reload goals
+            
+                // Reload goals
                 setTimeout(() => {
-                    loadGoals();
+                  loadGoals();
                 }, 500);
-                
+
             } catch (error) {
                 console.error('Error adding goal:', error);
                 alert('Error adding goal: ' + error.message);
-            }
-        });
+              }
+            });
+
+        
 
         // Load goals
         async function loadGoals() {
@@ -658,9 +772,215 @@
                 }
             }
         }
+        async function addTask(goalId, taskTitle) {
+            try {
+            await db.collection('tasks').add({
+              userId: currentUser.uid,
+              goalId: goalId,
+              title: taskTitle,
+              done: false,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            console.log('Task added');
+            loadGoals(); // Or loadTasks() if you separate them later
+        } catch (error) {
+            console.error('Error adding task:', error);
+        }
+        }
 
         // Set minimum date to today
         document.getElementById('goalDate').min = new Date().toISOString().split('T')[0];
+
+        function upgradePlan() {
+            alert("Premium upgrades coming soon! 🚀");
+        }
+
+        // Load Challenges from Firestore
+        async function loadChallenges() {
+          const challengesList = document.getElementById('challenges-list');
+          challengesList.innerHTML = '<div>Loading challenges...</div>';
+        
+          try {
+            const snapshot = await db.collection('challenges').orderBy('createdAt', 'desc').get();
+            let html = '';
+        
+            snapshot.forEach(doc => {
+              const challenge = doc.data();
+              html += `
+                <div style="background:#f8f9fa; padding:20px; border-radius:10px; margin-bottom:15px;">
+                  <h3>${challenge.title}</h3>
+                  <p>${challenge.description}</p>
+                  <button class="btn btn-success" onclick="joinChallenge('${doc.id}')">Join</button>
+                </div>
+              `;
+            });
+        
+            challengesList.innerHTML = html;
+        
+          } catch (error) {
+            console.error('Error loading challenges:', error);
+            challengesList.innerHTML = '<div>Error loading challenges.</div>';
+          }
+        }
+
+        // Join a Challenge
+async function joinChallenge(challengeId) {
+  try {
+    await db
+      .collection('users')
+      .doc(currentUser.uid)
+      .collection('joinedChallenges')
+      .doc(challengeId)
+      .set({
+        joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        progress: 0,
+        status: 'active'
+      });
+
+    alert('Challenge joined! 🎉');
+    loadJoinedChallenges(); // reload to see the new one immediately
+  } catch (error) {
+    console.error('Error joining challenge:', error);
+    alert('Error joining challenge: ' + error.message);
+  }
+}
+
+async function loadJoinedChallenges() {
+  const myChallengesList = document.getElementById('myChallengesList');
+
+  try {
+    const snapshot = await db
+      .collection('users')
+      .doc(currentUser.uid)
+      .collection('joinedChallenges')
+      .get();
+
+    if (snapshot.empty) {
+      myChallengesList.innerHTML = `<div class="no-goals">You haven’t joined any challenges yet.</div>`;
+      return;
+    }
+
+    let html = '';
+    for (const doc of snapshot.docs) {
+      const joinData = doc.data();
+      const challengeId = doc.id;
+
+      // Fetch the main challenge details
+      const challengeDoc = await db.collection('challenges').doc(challengeId).get();
+      if (!challengeDoc.exists) continue;
+
+      const challengeData = challengeDoc.data();
+
+      const isCompleted = joinData.status === 'completed';
+
+      html += `
+        <div class="goal-item ${isCompleted ? 'completed' : ''}">
+          <div class="goal-header">
+            <div>
+              <div class="goal-title">${challengeData.title}</div>
+              <div class="goal-date">Created: ${new Date(challengeData.createdAt.seconds * 1000).toLocaleDateString()}</div>
+            </div>
+            <span class="status-badge ${isCompleted ? 'status-completed' : 'status-active'}">
+              ${isCompleted ? 'Completed' : 'Active'}
+            </span>
+          </div>
+          <div class="goal-description">${challengeData.description}</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${joinData.progress}%"></div>
+          </div>
+          <div>Progress: ${joinData.progress}%</div>
+          <div class="goal-actions">
+            ${!isCompleted ? `
+              <button class="btn btn-success" onclick="updateChallengeProgress('${challengeId}', ${Math.min((joinData.progress || 0) + 10, 100)})">
+                +10% Progress
+              </button>
+              <button class="btn btn-success" onclick="markChallengeCompleted('${challengeId}')">
+                Mark Complete
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    myChallengesList.innerHTML = html;
+
+  } catch (error) {
+    console.error('Error loading joined challenges:', error);
+    alert('Error loading joined challenges: ' + error.message);
+  }
+}
+
+async function updateChallengeProgress(challengeId, newProgress) {
+  try {
+    await db
+      .collection('users')
+      .doc(currentUser.uid)
+      .collection('joinedChallenges')
+      .doc(challengeId)
+      .update({
+        progress: newProgress,
+        status: newProgress >= 100 ? 'completed' : 'active'
+      });
+
+    loadJoinedChallenges();
+  } catch (error) {
+    console.error('Error updating challenge progress:', error);
+    alert('Error updating challenge progress: ' + error.message);
+  }
+}
+
+async function markChallengeCompleted(challengeId) {
+  try {
+    await db
+      .collection('users')
+      .doc(currentUser.uid)
+      .collection('joinedChallenges')
+      .doc(challengeId)
+      .update({
+        progress: 100,
+        status: 'completed'
+      });
+
+    loadJoinedChallenges();
+  } catch (error) {
+    console.error('Error marking challenge completed:', error);
+    alert('Error marking challenge completed: ' + error.message);
+  }
+}
+
+document.getElementById('challengeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  if (userPlan !== 'premium') {
+    alert("Only premium users can create challenges.");
+    return;
+  }
+
+  const title = document.getElementById('challengeTitle').value;
+  const description = document.getElementById('challengeDescription').value;
+
+  try {
+    await db.collection('challenges').add({
+      title: title,
+      description: description,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser.uid
+    });
+
+    alert("Challenge added successfully!");
+    document.getElementById('challengeForm').reset();
+    loadChallenges(); // reload to show new one
+  } catch (error) {
+    console.error("Error adding challenge:", error);
+    alert("Error adding challenge: " + error.message);
+  }
+});
+
+
+
+
+
     </script>
 </body>
 </html>
